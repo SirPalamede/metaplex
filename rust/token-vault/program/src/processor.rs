@@ -528,11 +528,16 @@ pub fn process_redeem_shares(program_id: &Pubkey, accounts: &[AccountInfo]) -> P
         return Err(VaultError::FractionSupplyEmpty.into());
     }
 
-    let we_owe_you = match vault
-        .locked_price_per_share
-        .checked_mul(outstanding_shares.amount)
-    {
+    let fraction_decimals = match (10u32).checked_pow(fraction_mint.decimals as u32) {
         Some(val) => val,
+        None => return Err(VaultError::NumericalOverflowError.into()),
+    };
+
+    let we_owe_you = match (vault.locked_price_per_share as u128).checked_mul(outstanding_shares.amount as u128) {
+        Some(val) => match val.checked_div(fraction_decimals as u128) {
+            Some(val) => val as u64,
+            None => return Err(VaultError::NumericalOverflowError.into()),
+        },
         None => return Err(VaultError::NumericalOverflowError.into()),
     };
 
@@ -646,19 +651,24 @@ pub fn process_combine_vault(program_id: &Pubkey, accounts: &[AccountInfo]) -> P
         return Err(VaultError::NotAllowedToCombine.into());
     }
 
-    let total_market_cap = match fraction_mint
-        .supply
-        .checked_mul(external_pricing.price_per_share)
-    {
+    let fraction_decimals = match (10u32).checked_pow(fraction_mint.decimals as u32) {
         Some(val) => val,
         None => return Err(VaultError::NumericalOverflowError.into()),
     };
 
-    let stored_market_cap = match fraction_treasury
-        .amount
-        .checked_mul(external_pricing.price_per_share)
-    {
-        Some(val) => val,
+    let total_market_cap = match (fraction_mint.supply as u128).checked_mul(external_pricing.price_per_share as u128) {
+        Some(val) => match val.checked_div(fraction_decimals as u128) {
+            Some(val) => val as u64,
+            None => return Err(VaultError::NumericalOverflowError.into()),
+        },
+        None => return Err(VaultError::NumericalOverflowError.into()),
+    };
+
+    let stored_market_cap = match (fraction_treasury.amount as u128).checked_mul(external_pricing.price_per_share as u128) {
+        Some(val) => match val.checked_div(fraction_decimals as u128) {
+            Some(val) => val as u64,
+            None => return Err(VaultError::NumericalOverflowError.into()),
+        },
         None => return Err(VaultError::NumericalOverflowError.into()),
     };
 
@@ -667,11 +677,11 @@ pub fn process_combine_vault(program_id: &Pubkey, accounts: &[AccountInfo]) -> P
         None => return Err(VaultError::NumericalOverflowError.into()),
     };
 
-    let your_share_value = match your_outstanding_shares
-        .amount
-        .checked_mul(external_pricing.price_per_share)
-    {
-        Some(val) => val,
+    let your_share_value = match (your_outstanding_shares.amount as u128).checked_mul(external_pricing.price_per_share as u128) {
+        Some(val) => match val.checked_div(fraction_decimals as u128) {
+            Some(val) => val as u64,
+            None => return Err(VaultError::NumericalOverflowError.into()),
+        },
         None => return Err(VaultError::NumericalOverflowError.into()),
     };
 

@@ -200,6 +200,7 @@ pub fn create_update_external_price_account_instruction(
         program_id,
         accounts: vec![AccountMeta::new(external_price_account, true)],
         data: VaultInstruction::UpdateExternalPriceAccount(ExternalPriceAccount {
+            discriminator: 0,
             key: Key::ExternalAccountKeyV1,
             price_per_share,
             price_mint,

@@ -1,5 +1,5 @@
 use {
-    crate::utils::try_from_slice_checked,
+    crate::utils::{try_from_slice_checked, try_price_account_from_slice_checked},
     borsh::{BorshDeserialize, BorshSerialize},
     solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey},
 };
@@ -17,7 +17,7 @@ pub enum Key {
 
 pub const MAX_SAFETY_DEPOSIT_SIZE: usize = 1 + 32 + 32 + 32 + 1;
 pub const MAX_VAULT_SIZE: usize = 1 + 32 + 32 + 32 + 32 + 1 + 32 + 1 + 32 + 1 + 1 + 8;
-pub const MAX_EXTERNAL_ACCOUNT_SIZE: usize = 1 + 8 + 32 + 1;
+pub const MAX_EXTERNAL_ACCOUNT_SIZE: usize = 8 + 1 + 8 + 32 + 1;
 #[repr(C)]
 #[derive(Clone, BorshSerialize, BorshDeserialize, PartialEq)]
 pub enum VaultState {
@@ -108,6 +108,7 @@ impl SafetyDepositBox {
 #[repr(C)]
 #[derive(Clone, BorshSerialize, BorshDeserialize)]
 pub struct ExternalPriceAccount {
+    pub discriminator: u64,
     pub key: Key,
     pub price_per_share: u64,
     /// Mint of the currency we are pricing the shares against, should be same as redeem_treasury.
@@ -119,7 +120,7 @@ pub struct ExternalPriceAccount {
 
 impl ExternalPriceAccount {
     pub fn from_account_info(a: &AccountInfo) -> Result<ExternalPriceAccount, ProgramError> {
-        let sd: ExternalPriceAccount = try_from_slice_checked(
+        let sd: ExternalPriceAccount = try_price_account_from_slice_checked(
             &a.data.borrow_mut(),
             Key::ExternalAccountKeyV1,
             MAX_EXTERNAL_ACCOUNT_SIZE,
