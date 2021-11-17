@@ -242,7 +242,12 @@ programCommand('verify')
               cacheItem.onChain = false;
               allGood = false;
             } else {
-              const json = await fetch(cacheItem.link);
+              let json;
+              try {
+                json = await fetch(cacheItem.link);
+              } catch (e) {
+                json = { status: 404 };
+              }
               if (
                 json.status == 200 ||
                 json.status == 204 ||
@@ -251,7 +256,12 @@ programCommand('verify')
                 const body = await json.text();
                 const parsed = JSON.parse(body);
                 if (parsed.image) {
-                  const check = await fetch(parsed.image);
+                  let check;
+                  try {
+                    check = await fetch(parsed.image);
+                  } catch (e) {
+                    check = { status: 404 };
+                  }
                   if (
                     check.status == 200 ||
                     check.status == 204 ||
@@ -459,6 +469,8 @@ programCommand('show')
       log.info('price: ', machine.data.price.toNumber());
       //@ts-ignore
       log.info('itemsAvailable: ', machine.data.itemsAvailable.toNumber());
+      //@ts-ignore
+      log.info('itemsRedeemed: ', machine.itemsRedeemed.toNumber());
       log.info(
         'goLiveDate: ',
         //@ts-ignore
@@ -636,37 +648,57 @@ programCommand('update_candy_machine')
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
+  .option('--new-authority <Pubkey>', 'New Authority. Base58-encoded')
   .action(async (directory, cmd) => {
-    const { keypair, env, date, rpcUrl, price, cacheName } = cmd.opts();
+    const { keypair, env, date, rpcUrl, price, newAuthority, cacheName } =
+      cmd.opts();
     const cacheContent = loadCache(cacheName, env);
 
     const secondsSinceEpoch = date ? parseDate(date) : null;
     const lamports = price ? parsePrice(price) : null;
+    const newAuthorityKey = newAuthority ? new PublicKey(newAuthority) : null;
 
     const walletKeyPair = loadWalletKey(keypair);
     const anchorProgram = await loadCandyProgram(walletKeyPair, env, rpcUrl);
 
     const candyMachine = new PublicKey(cacheContent.candyMachineAddress);
-    const tx = await anchorProgram.rpc.updateCandyMachine(
-      lamports ? new anchor.BN(lamports) : null,
-      secondsSinceEpoch ? new anchor.BN(secondsSinceEpoch) : null,
-      {
+
+    if (lamports || secondsSinceEpoch) {
+      const tx = await anchorProgram.rpc.updateCandyMachine(
+        lamports ? new anchor.BN(lamports) : null,
+        secondsSinceEpoch ? new anchor.BN(secondsSinceEpoch) : null,
+        {
+          accounts: {
+            candyMachine,
+            authority: walletKeyPair.publicKey,
+          },
+        },
+      );
+
+      cacheContent.startDate = secondsSinceEpoch;
+      if (date)
+        log.info(
+          ` - updated startDate timestamp: ${secondsSinceEpoch} (${date})`,
+        );
+      if (lamports)
+        log.info(` - updated price: ${lamports} lamports (${price} SOL)`);
+      log.info('update_candy_machine finished', tx);
+    }
+
+    if (newAuthorityKey) {
+      const tx = await anchorProgram.rpc.updateAuthority(newAuthorityKey, {
         accounts: {
           candyMachine,
           authority: walletKeyPair.publicKey,
         },
-      },
-    );
+      });
 
-    cacheContent.startDate = secondsSinceEpoch;
+      cacheContent.authority = newAuthorityKey.toBase58();
+      log.info(` - updated authority: ${newAuthorityKey.toBase58()}`);
+      log.info('update_authority finished', tx);
+    }
+
     saveCache(cacheName, env, cacheContent);
-    if (date)
-      log.info(
-        ` - updated startDate timestamp: ${secondsSinceEpoch} (${date})`,
-      );
-    if (lamports)
-      log.info(` - updated price: ${lamports} lamports (${price} SOL)`);
-    log.info('update_candy_machine finished', tx);
   });
 
 programCommand('mint_one_token')
@@ -679,7 +711,13 @@ programCommand('mint_one_token')
 
     const cacheContent = loadCache(cacheName, env);
     const configAddress = new PublicKey(cacheContent.program.config);
-    const tx = await mint(keypair, env, configAddress, rpcUrl);
+    const tx = await mint(
+      keypair,
+      env,
+      configAddress,
+      cacheContent.program.uuid,
+      rpcUrl,
+    );
 
     log.info('mint_one_token finished', tx);
   });
